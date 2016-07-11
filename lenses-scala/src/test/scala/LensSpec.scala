@@ -1,4 +1,3 @@
-import fr.xebia.lenses.Main.{Address, Person}
 import org.scalatest.{FlatSpec, Matchers}
 
 class LensSpec extends FlatSpec with Matchers {
