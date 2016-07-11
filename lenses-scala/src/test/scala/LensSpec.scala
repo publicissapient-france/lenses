@@ -2,27 +2,54 @@ import org.scalatest.{FlatSpec, Matchers}
 
 class LensSpec extends FlatSpec with Matchers {
 
-  case class Person(name: String, age: Int, address: Address)
+  case class Street(number: Int, name: String)
+  case class Town(postalCode: String, name: String)
+  case class Address(street: Street, town: Town)
+  case class Person(firstName: String, lastName: String, address: Address)
 
-  case class Address(number: Int, street: String)
+  def updateStreetNumber(person: Person, streetNumber: Int): Person = person.copy(
+    address = person.address.copy(
+      street = person.address.street.copy(
+        number = streetNumber
+      )
+    )
+  )
 
-  trait Lens[O, P] {
+  "boiler plate function" should "update street number" in {
+    val person = Person("John", "Doe", Address(Street(12, "Rue de Picpus"), Town("75012", "Paris")))
+
+    val updatedPerson = updateStreetNumber(person, 45)
+
+    updatedPerson.address.street.number should be(45)
+  }
+
+  def updateFirstName(person: Person, firstName: String) = person.copy(firstName = firstName)
+
+  def updateAddress(person: Person, address: Address): Person = person.copy(address = address)
+
+  def updateStreet(person: Person, street: Street): Person = person.copy(
+    address = person.address.copy(
+      street = street
+    )
+  )
+
+  trait Lens[S, P] {
     self =>
-    def get: O => P
-    def set: (O, P) => O
-    def update(p: P)(o: O): O = set(o, p)
-    def and[_P](next: Lens[P, _P]): Lens[O, _P] = new Lens[O, _P] {
-      override def get: (O) => _P = o => next.get(self.get(o))
-      override def set: (O, _P) => O = {
+    def get: S => P
+    def set: (S, P) => S
+    def update(p: P)(s: S): S = set(s, p)
+    def and[_P](next: Lens[P, _P]): Lens[S, _P] = new Lens[S, _P] {
+      override def get: (S) => _P = o => next.get(self.get(o))
+      override def set: (S, _P) => S = {
         case (o, _p) => self.set(o, next.set(self.get(o), _p))
       }
     }
   }
 
-  implicit val _personName = new Lens[Person, String] {
-    override def get: (Person) => String = _.name
+  implicit val _personFirstName = new Lens[Person, String] {
+    override def get: (Person) => String = _.firstName
     override def set: (Person, String) => Person = {
-      case (p, n) => p.copy(name = n)
+      case (p, n) => p.copy(firstName = n)
     }
   }
 
@@ -33,23 +60,54 @@ class LensSpec extends FlatSpec with Matchers {
     }
   }
 
-  implicit val _addressNumber = new Lens[Address, Int] {
-    override def get: (Address) => Int = _.number
-    override def set: (Address, Int) => Address = {
-      case (a, n) => a.copy(number = n)
+  "lenses" should "update values" in {
+    val person = Person("John", "Doe", Address(Street(12, "Rue de Picpus"), Town("75012", "Paris")))
+    val p1 = _personFirstName.update("Joe")(person)
+
+    _personFirstName.get(p1) should be("Joe")
+
+    val p2 = _personAddress.update(Address(Street(20, "Rue de Montreuil"), Town("75011", "Paris")))(person)
+
+    _personAddress.get(p2) should be(Address(Street(20, "Rue de Montreuil"), Town("75011", "Paris")))
+
+    val p3 = _personAddress.update(Address(Street(20, "Rue de Montreuil"), Town("75011", "Paris")))(p1)
+
+    _personAddress.get(p3) should be(Address(Street(20, "Rue de Montreuil"), Town("75011", "Paris")))
+  }
+
+  val _addressStreet = new Lens[Address, Street] {
+    override def get: (Address) => Street = _.street
+
+    override def set: (Address, Street) => Address = {
+      case (a, s) => a.copy(street = s)
     }
   }
 
-  "simple lens" should "modify direct value" in {
-    val person = Person("Toto", 12, Address(10, "street"))
-    val _personAddressNumber: Lens[Person, Int] = _personAddress.and(_addressNumber)
-    val p = _personName.update("Mathieu")(person)
-    val n = _personAddressNumber.get(p)
-    val newP = _personAddressNumber.update(15)(person)
+  val _streetNumber = new Lens[Street, Int] {
+    override def get: (Street) => Int = _.number
 
-    p.toString shouldBe "Person(Mathieu,12,Address(10,street))"
-    n shouldBe 10
-    newP.toString shouldBe "Person(Toto,12,Address(15,street))"
+    override def set: (Street, Int) => Street = {
+      case (s, n) => s.copy(number = n)
+    }
+  }
+
+  val _streetName = new Lens[Street, String] {
+    override def get: (Street) => String = _.name
+
+    override def set: (Street, String) => Street = {
+      case (s, n) => s.copy(name = n)
+    }
+  }
+
+  val _personStreetNumber: Lens[Person, Int] = _personAddress.and(_addressStreet).and(_streetNumber)
+  val _personStreetName: Lens[Person, String] = _personAddress.and(_addressStreet).and(_streetName)
+
+  "lenses composition" should "update street number" in {
+    val person = Person("John", "Doe", Address(Street(12, "Rue de Picpus"), Town("75012", "Paris")))
+
+    val updatedPerson = _personStreetNumber.update(45)(person)
+
+    updatedPerson.address.street.number should be(45)
   }
 
 }
